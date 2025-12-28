@@ -1,46 +1,80 @@
 import azure.functions as func
 import logging
-import pyodbc
-import requests
-from datetime import datetime
+import platform # Para detectar si es Windows o Linux
 
 app = func.FunctionApp()
 
-# Este "Timer" hará que se ejecute solo
 @app.schedule(schedule="0 0 9 * * *", arg_name="myTimer", run_on_startup=True, use_monitor=False) 
 def NoticiasTimer(myTimer: func.TimerRequest) -> None:
+    # --- 1. IMPORTS DENTRO DE LA FUNCIÓN ---
+    # Esto evita errores de "Module not found" al desplegar en Azure
+    import pyodbc
+    import requests
+    from datetime import datetime
+
     if myTimer.past_due:
         logging.info('El timer está retrasado.')
 
-    # --- CONFIGURACIÓN (Usa tus datos) ---
-    API_KEY = 'ca8e97d988914a44ab070688009916f4'
+    # --- 2. CONFIGURACIÓN (¡REVISA TUS DATOS!) ---
+    API_KEY = 'ca8e97d988914a44ab070688009916f4'  # <--- PON TU API KEY
     server = 'sql-server-noticias-mateo-v2.database.windows.net'
     database = 'db_noticias'
     username = 'adminusuario'
-    password = 'MateoDal13!' 
-    # IMPORTANTE: En Azure Linux el driver se llama así:
-    driver = '{ODBC Driver 18 for SQL Server}' 
+    password = 'MateoDal13!'      # <--- PON TU PASSWORD REAL
+    
+    # --- 3. SELECCIÓN INTELIGENTE DE DRIVER ---
+    # Si detecta Windows (tu PC), usa el 18. Si es Linux (Azure), usa el 17.
+    sistema = platform.system()
+    if sistema == 'Windows':
+        driver = '{ODBC Driver 18 for SQL Server}'
+        logging.info("Sistema Windows detectado: Usando Driver 18")
+    else:
+        driver = '{ODBC Driver 17 for SQL Server}'
+        logging.info("Sistema Linux/Azure detectado: Usando Driver 17")
 
     logging.info('Iniciando extracción de noticias...')
 
-    # 1. Obtener Datos
+    # --- 4. LÓGICA DE EXTRACCIÓN Y CARGA ---
     url = f'https://newsapi.org/v2/everything?q=bitcoin&language=es&apiKey={API_KEY}'
+    
     try:
         response = requests.get(url)
-        articulos = response.json().get('articles', [])[:5]
+        articulos = response.json().get('articles', [])[:5] # Tomamos 5 noticias
 
-        # 2. Conexión e Inserción
+        if not articulos:
+            logging.warning("No se encontraron noticias en la API.")
+            return
+
+        # Cadena de conexión
+        # Nota: En Driver 18 a veces se requiere TrustServerCertificate=yes para pruebas locales
         conn_str = f'DRIVER={driver};SERVER={server};PORT=1433;DATABASE={database};UID={username};PWD={password}'
+        
         with pyodbc.connect(conn_str) as conn:
             with conn.cursor() as cursor:
+                # Crear tabla si no existe
+                cursor.execute('''
+                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='noticias' AND xtype='U')
+                    CREATE TABLE noticias (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        titulo NVARCHAR(MAX),
+                        fuente NVARCHAR(255),
+                        fecha_publicacion NVARCHAR(100),
+                        fecha_carga DATETIME DEFAULT GETDATE()
+                    )
+                ''')
+
+                # Insertar datos
+                contador = 0
                 for art in articulos:
                     cursor.execute('''
                         INSERT INTO noticias (titulo, fuente, fecha_publicacion)
                         VALUES (?, ?, ?)
                     ''', art['title'], art['source']['name'], art['publishedAt'])
+                    contador += 1
+                
                 conn.commit()
         
-        logging.info(f"✅ Se insertaron {len(articulos)} noticias exitosamente.")
+        logging.info(f"✅ ¡ÉXITO! Se insertaron {contador} noticias usando el driver: {driver}")
     
     except Exception as e:
-        logging.error(f"❌ Error en la función: {e}")
+        logging.error(f"❌ Error crítico en la función: {e}")
