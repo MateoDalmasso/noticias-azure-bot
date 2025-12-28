@@ -1,6 +1,7 @@
 import azure.functions as func
 import logging
 import platform # Para detectar si es Windows o Linux
+import os
 
 app = func.FunctionApp()
 
@@ -20,7 +21,7 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     server = 'sql-server-noticias-mateo-v2.database.windows.net'
     database = 'db_noticias'
     username = 'adminusuario'
-    password = 'MateoDal13!'      # <--- PON TU PASSWORD REAL
+    password = os.environ["SQL_PASSWORD"]      # <--- PON TU PASSWORD REAL
     
     # --- 3. SELECCIÓN INTELIGENTE DE DRIVER ---
     # Si detecta Windows (tu PC), usa el 18. Si es Linux (Azure), usa el 17.
@@ -78,3 +79,4 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     
     except Exception as e:
         logging.error(f"❌ Error crítico en la función: {e}")
+
