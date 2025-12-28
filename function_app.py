@@ -24,7 +24,7 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     username = 'adminusuario'
     
     # ⚠️ CAMBIA ESTO POR TU NUEVA CONTRASEÑA ⚠️
-    password = 'ESCRIBE_AQUI_TU_NUEVA_CONTRASEÑA'
+    password = 'MateoDal16!'
     
     # --- 3. SELECCIÓN INTELIGENTE DE DRIVER ---
     # Si detecta Windows (tu PC), usa el 18. Si es Linux (Azure), usa el 17.
@@ -83,6 +83,7 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     
     except Exception as e:
         logging.error(f"❌ Error en la función: {e}")
+
 
 
 
