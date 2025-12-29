@@ -1,6 +1,7 @@
 import azure.functions as func
 import logging
 import platform
+import os # Necesario para leer la variable segura
 
 app = func.FunctionApp()
 
@@ -9,52 +10,46 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     import pyodbc
     import requests
     from datetime import datetime
-    import os
 
-    if myTimer.past_due:
-        logging.info('El timer está retrasado.')
+    # --- 1. RECUPERAR SECRETOS ---
+    # Esto lee directo de la configuración de Azure.
+    # Si falla aquí, es que la variable "SQL_PASSWORD" no está creada o tiene un espacio extra.
+    try:
+        password = os.environ["SQL_PASSWORD"]
+    except KeyError:
+        logging.error("❌ ERROR CRÍTICO: No se encontró la variable SQL_PASSWORD en Azure.")
+        return
 
-    # --- 1. CONFIGURACIÓN ---
-    # API Key (Tu clave real)
+    # --- 2. CONFIGURACIÓN ---
     API_KEY = 'ca8e97d988914a44ab070688009916f4' 
-    
     server = 'sql-server-noticias-mateo-v2.database.windows.net'
     database = 'db_noticias'
-    username = 'adminusuario'
     
-    # ⚠️ RECUERDA PONER TU CONTRASEÑA AQUÍ O USAR os.environ SI YA LA CONFIGURASTE ⚠️
-    password = 'MateoDal16!' 
+    # ⚠️ VERIFICA ESTO EN EL PORTAL DE AZURE -> SQL SERVER ⚠️
+    # Asegúrate de que tu usuario administrador sea EXACTAMENTE este:
+    username = 'adminusuario' 
     
-    # --- 2. SELECCIÓN DE DRIVER (CAMBIO IMPORTANTE) ---
-    sistema = platform.system()
-    
-    # En Azure (Linux) y Windows moderno, usaremos el Driver 18
-    # El Driver 17 a veces no está presente en las imágenes nuevas de Azure
     driver = '{ODBC Driver 18 for SQL Server}'
     
-    logging.info(f"Sistema detectado: {sistema}. Intentando conexión con {driver}")
+    # --- 3. CONEXIÓN ---
+    # Agregamos impresiones de seguridad (ocultando la contraseña real)
+    logging.info(f"Intentando conectar a {server} con usuario {username}...")
 
-    # --- 3. LÓGICA ---
-    url = f'https://newsapi.org/v2/everything?q=bitcoin&language=es&apiKey={API_KEY}'
+    conn_str = (
+        f'DRIVER={driver};SERVER={server};PORT=1433;DATABASE={database};'
+        f'UID={username};PWD={password};Encrypt=yes;TrustServerCertificate=yes;Connection Timeout=30;'
+    )
     
     try:
-        response = requests.get(url)
-        articulos = response.json().get('articles', [])[:5]
-
-        if not articulos:
-            logging.warning("No se encontraron noticias.")
-            return
-
-        # --- CONEXIÓN (ACTUALIZADA PARA DRIVER 18) ---
-        # Driver 18 requiere 'TrustServerCertificate=yes' para conexiones Azure rápidas
-        conn_str = (
-            f'DRIVER={driver};SERVER={server};PORT=1433;DATABASE={database};'
-            f'UID={username};PWD={password};Encrypt=yes;TrustServerCertificate=yes;Connection Timeout=30;'
-        )
-        
         with pyodbc.connect(conn_str) as conn:
+            logging.info("✅ ¡CONEXIÓN EXITOSA A LA BASE DE DATOS!")
+            
+            # Si llegamos aquí, la contraseña funcionó. Ahora la API.
+            url = f'https://newsapi.org/v2/everything?q=bitcoin&language=es&apiKey={API_KEY}'
+            response = requests.get(url)
+            articulos = response.json().get('articles', [])[:5]
+
             with conn.cursor() as cursor:
-                # Crear tabla
                 cursor.execute('''
                     IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='noticias' AND xtype='U')
                     CREATE TABLE noticias (
@@ -66,7 +61,6 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
                     )
                 ''')
 
-                # Insertar
                 contador = 0
                 for art in articulos:
                     cursor.execute('''
@@ -77,11 +71,10 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
                 
                 conn.commit()
         
-        logging.info(f"✅ ¡VICTORIA! Se insertaron {contador} noticias en la base de datos.")
+        logging.info(f"✅ ¡VICTORIA! Se guardaron {contador} noticias.")
     
     except Exception as e:
-        # Este log nos dirá exactamente qué pasa si falla de nuevo
-        logging.error(f"❌ Error detallado: {e}")
+        logging.error(f"❌ Error de conexión: {e}")
 
 
 
