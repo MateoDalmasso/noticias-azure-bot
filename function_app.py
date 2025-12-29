@@ -5,7 +5,7 @@ import os # Necesario para leer la variable segura
 
 app = func.FunctionApp()
 
-@app.schedule(schedule="0 */5 * * * *", arg_name="myTimer", run_on_startup=True, use_monitor=False) 
+@app.schedule(schedule="0 0 9 * * 1", arg_name="myTimer", run_on_startup=True, use_monitor=False) 
 def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     import pyodbc
     import requests
@@ -75,6 +75,7 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     
     except Exception as e:
         logging.error(f"❌ Error de conexión: {e}")
+
 
 
 
