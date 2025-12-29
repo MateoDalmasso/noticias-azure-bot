@@ -1,62 +1,60 @@
 import azure.functions as func
 import logging
-import platform # Para detectar si es Windows o Linux
+import platform
 
 app = func.FunctionApp()
 
-@app.schedule(schedule="0 0 9 * * *", arg_name="myTimer", run_on_startup=True, use_monitor=False) 
+@app.schedule(schedule="0 */5 * * * *", arg_name="myTimer", run_on_startup=True, use_monitor=False) 
 def NoticiasTimer(myTimer: func.TimerRequest) -> None:
-    # --- 1. IMPORTS DENTRO DE LA FUNCIÓN ---
-    # Esto evita errores de arranque en Azure
     import pyodbc
     import requests
     from datetime import datetime
+    import os
 
     if myTimer.past_due:
         logging.info('El timer está retrasado.')
 
-    # --- 2. CONFIGURACIÓN ---
-    # He puesto tu API Key real aquí:
+    # --- 1. CONFIGURACIÓN ---
+    # API Key (Tu clave real)
     API_KEY = 'ca8e97d988914a44ab070688009916f4' 
     
     server = 'sql-server-noticias-mateo-v2.database.windows.net'
     database = 'db_noticias'
     username = 'adminusuario'
     
-    # ⚠️ CAMBIA ESTO POR TU NUEVA CONTRASEÑA ⚠️
-    password = 'MateoDal16!'
+    # ⚠️ RECUERDA PONER TU CONTRASEÑA AQUÍ O USAR os.environ SI YA LA CONFIGURASTE ⚠️
+    password = 'TU_CONTRASEÑA_NUEVA_AQUI' 
     
-    # --- 3. SELECCIÓN INTELIGENTE DE DRIVER ---
-    # Si detecta Windows (tu PC), usa el 18. Si es Linux (Azure), usa el 17.
+    # --- 2. SELECCIÓN DE DRIVER (CAMBIO IMPORTANTE) ---
     sistema = platform.system()
-    if sistema == 'Windows':
-        driver = '{ODBC Driver 18 for SQL Server}'
-        logging.info("Sistema Windows detectado: Usando Driver 18")
-    else:
-        driver = '{ODBC Driver 17 for SQL Server}'
-        logging.info("Sistema Linux/Azure detectado: Usando Driver 17")
+    
+    # En Azure (Linux) y Windows moderno, usaremos el Driver 18
+    # El Driver 17 a veces no está presente en las imágenes nuevas de Azure
+    driver = '{ODBC Driver 18 for SQL Server}'
+    
+    logging.info(f"Sistema detectado: {sistema}. Intentando conexión con {driver}")
 
-    logging.info('Iniciando extracción de noticias...')
-
-    # --- 4. LÓGICA DE EXTRACCIÓN Y CARGA ---
+    # --- 3. LÓGICA ---
     url = f'https://newsapi.org/v2/everything?q=bitcoin&language=es&apiKey={API_KEY}'
     
     try:
-        # Petición a la API
         response = requests.get(url)
-        articulos = response.json().get('articles', [])[:5] # Tomamos 5 noticias
+        articulos = response.json().get('articles', [])[:5]
 
         if not articulos:
-            logging.warning("No se encontraron noticias en la API.")
+            logging.warning("No se encontraron noticias.")
             return
 
-        # Cadena de conexión
-        conn_str = f'DRIVER={driver};SERVER={server};PORT=1433;DATABASE={database};UID={username};PWD={password}'
+        # --- CONEXIÓN (ACTUALIZADA PARA DRIVER 18) ---
+        # Driver 18 requiere 'TrustServerCertificate=yes' para conexiones Azure rápidas
+        conn_str = (
+            f'DRIVER={driver};SERVER={server};PORT=1433;DATABASE={database};'
+            f'UID={username};PWD={password};Encrypt=yes;TrustServerCertificate=yes;Connection Timeout=30;'
+        )
         
-        # Conexión a la Base de Datos
         with pyodbc.connect(conn_str) as conn:
             with conn.cursor() as cursor:
-                # Crear tabla si no existe
+                # Crear tabla
                 cursor.execute('''
                     IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='noticias' AND xtype='U')
                     CREATE TABLE noticias (
@@ -68,7 +66,7 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
                     )
                 ''')
 
-                # Insertar datos
+                # Insertar
                 contador = 0
                 for art in articulos:
                     cursor.execute('''
@@ -79,10 +77,12 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
                 
                 conn.commit()
         
-        logging.info(f"✅ ¡ÉXITO TOTAL! Se insertaron {contador} noticias usando el driver: {driver}")
+        logging.info(f"✅ ¡VICTORIA! Se insertaron {contador} noticias en la base de datos.")
     
     except Exception as e:
-        logging.error(f"❌ Error en la función: {e}")
+        # Este log nos dirá exactamente qué pasa si falla de nuevo
+        logging.error(f"❌ Error detallado: {e}")
+
 
 
 
