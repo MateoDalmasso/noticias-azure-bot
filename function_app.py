@@ -23,7 +23,7 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     username = 'adminusuario'
     
     # ⚠️ RECUERDA PONER TU CONTRASEÑA AQUÍ O USAR os.environ SI YA LA CONFIGURASTE ⚠️
-    password = 'TU_CONTRASEÑA_NUEVA_AQUI' 
+    password = 'MateoDal16!' 
     
     # --- 2. SELECCIÓN DE DRIVER (CAMBIO IMPORTANTE) ---
     sistema = platform.system()
@@ -82,6 +82,7 @@ def NoticiasTimer(myTimer: func.TimerRequest) -> None:
     except Exception as e:
         # Este log nos dirá exactamente qué pasa si falla de nuevo
         logging.error(f"❌ Error detallado: {e}")
+
 
 
 
